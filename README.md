@@ -3,7 +3,6 @@
 Repository content:
 
 * Source files for EasyEDA, Gerber and BOM files.
-* 
 * Arduino sketch
 
 For details visit [my blog](https://www.lacina.dev/blog/development-new-mower-unit-control/)
