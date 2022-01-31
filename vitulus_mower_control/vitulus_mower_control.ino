@@ -15,16 +15,18 @@ ros::Publisher mower_motor_on("mower_motor_on", &motor_on_msg);
 
 std_msgs::Int32 height_msg;
 ros::Publisher mower_cut_height("mower_cut_height", &height_msg);
+//
+//std_msgs::Int32 mower_msg;
+//ros::Publisher mower_message("mower_message", &mower_msg);
 
 
-bool dir = true;
 bool endstop = false;
 bool gohome = true;
+bool switchstate = true;
 int  motor_on = 0;
 int  cut_height = 0;
 
-#define ENC_B 2
-#define ENC_Z 3
+
 #define PWM_R 5
 #define PWM_L 6
 double countb = 0;
@@ -41,18 +43,22 @@ double outputVal, setPoint;
 #define MOSI_PIN  11
 #define MISO_PIN 12
 #define SCK_PIN  13
-constexpr uint32_t steps_per_mm = 80;
+constexpr uint32_t steps_per_mm = 80*15;
 
 #define OUTPUT_MIN 0
 #define OUTPUT_MAX 255
-#define KP 1.7
-#define KI 25
-#define KD 0.02
+#define KP 2.7    // 1.7
+#define KI 5    // 25
+#define KD 2.2  // 0.02
 
-unsigned long interval = 5;
+#define INTERVAL 5
+
+//unsigned long interval = 5;
 unsigned long rpm = 3300;
 unsigned long ppr = 256;
-unsigned long ms = 60000/interval;
+unsigned long ms = 60000/INTERVAL;
+
+#define SWITCH_PIN  3
 
 
 TMC2130Stepper driver = TMC2130Stepper(EN_PIN, DIR_PIN, STEP_PIN, CS_PIN);
@@ -74,11 +80,13 @@ void setup() {
     nh.advertise(mower_rpm);
     nh.advertise(mower_motor_on);
     nh.advertise(mower_cut_height);
+//    nh.advertise(mower_message);
     nh.subscribe(sub_motor);
     nh.subscribe(sub_rpm);
     nh.subscribe(sub_height);
     
-    attachInterrupt(1, switchbtn, FALLING);
+//    attachInterrupt(1, switchbtn, LOW);
+//    attachInterrupt(1, switchbtnup, FALLING);
     SPI.begin();
     Serial.begin(115200);
     pinMode(CS_PIN, OUTPUT);
@@ -102,10 +110,25 @@ void setup() {
     setPoint = double(rpm*ppr/ms); //205-3000rpm 4096
     attachInterrupt(0, prerusenib, RISING);
     lastmillis = millis();
-    myPID.setTimeStep(interval);
+    myPID.setTimeStep(INTERVAL);
+
+    pinMode(SWITCH_PIN, INPUT);
+    if (digitalRead(SWITCH_PIN) == false)
+    {
+      endstop = true;
+      gohome = false;
+      switchstate = false;
+    }else{
+      switchstate = true;
+    }
+
+
 }
 
 void loop() {
+//  Serial.println(gohome);
+
+  
 
   
   if ((millis() - lastmillis) >= 1000){
@@ -115,19 +138,22 @@ void loop() {
     mower_motor_on.publish( &motor_on_msg );
     height_msg.data = (stepper.currentPosition()/steps_per_mm);
     mower_cut_height.publish( &height_msg );
+//
+//    mower_msg.data = (count/ppr*ms) * 1000;
+//    mower_msg.data = (mower_msg.data + (motor_on)) * 1000;
+//    mower_msg.data = (mower_msg.data + (stepper.currentPosition()/steps_per_mm));
+    
+//    mower_message.publish( &mower_msg );
+    
     nh.spinOnce();
 
     lastmillis = millis();
-//    Serial.print(count); 
-//    Serial.print("   ");  
-//    Serial.print(setPoint); 
-//    Serial.print("   ");  
-//    Serial.println(outputVal);   
+
   }
 
 
   // PID MOWER MOTOR
-  if ((millis() - lastmillisloop) >= interval){
+  if ((millis() - lastmillisloop) >= INTERVAL){
     lastmillisloop = millis();
     count = countb;
     countb = 0;
@@ -143,17 +169,48 @@ void loop() {
   }
 
   // STEPPER
-  if (endstop){
-      endstop = false;
-      stepper.stop();
-      stepper.move(0*steps_per_mm);
-      stepper.disableOutputs();
-      gohome = false;
-      stepper.setCurrentPosition(0);
-    }
-    if (gohome){
-      stepper.move(-100*steps_per_mm); // Move 100mm
+  if (digitalRead(SWITCH_PIN) == false)
+    {
+//      Serial.println("ENDSTOP PRESSED");
+      if (switchstate == true){
+        endstop = true;
+        gohome = false;
+        stepper.stop();
+        stepper.move(0*steps_per_mm);
+        stepper.setCurrentPosition(0);
+        stepper.disableOutputs();
+      }
+      if (endstop == true){
+      stepper.moveTo(100*steps_per_mm); // Move 100mm
       stepper.enableOutputs();
+//      Serial.println("ENDSTOP PRESSED1");
+      gohome = false;
+//      Serial.println("ON");
+      }
+      switchstate = false;
+    }else{
+//      Serial.println("ENDSTOP RELEASED");
+//      Serial.println("OFF");
+      if (endstop == true){
+        endstop = false;
+
+        stepper.stop();
+        stepper.move(0*steps_per_mm);
+        stepper.disableOutputs();
+        stepper.setCurrentPosition(0);
+//        Serial.println("ZERO LEVEL");
+//        Serial.println("OFF END STOP");
+        
+      }
+      switchstate = true;
+    }
+  
+ 
+    
+    if (gohome == true){
+      stepper.moveTo(-100*steps_per_mm); // Move 100mm
+      stepper.enableOutputs();
+//      Serial.println("GOING HOME1");
     }
     
     if (stepper.distanceToGo() == 0) {
@@ -169,9 +226,17 @@ void prerusenib() {
   countb ++;
 }
 
-void switchbtn(){
-  endstop = true;
-}
+//void switchbtn(){
+//  endstop = false;
+//  gohome = false;
+//  zero = true;
+//  stepper.move(2*steps_per_mm); // Move 100mm
+//  stepper.enableOutputs();
+//  Serial.println("ENDSTOP PRESSED");
+////  Serial.println("ENDSTOP PRESSED");
+//}
+
+
 
 void setMotor( const std_msgs::Int32& set_motor_msg){
   motor_on = set_motor_msg.data; 
