@@ -3,7 +3,10 @@
 Repository content:
 
 * Source files for EasyEDA, Gerber and BOM files.
-* Arduino sketch
+
+Firmware for nano [FW](https://github.com/lacina-dev/VITULUS_mower_FW)
+
+ROS package [ROS](https://github.com/lacina-dev/vitulus_mower)
 
 For details visit [my blog](https://www.lacina.dev/blog/development-new-mower-unit-control/)
 
